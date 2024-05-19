@@ -1,0 +1,10 @@
+torch>=1.13.0
+torchvision>=0.9
+numpy
+transformers
+diffusers
+rotary-embedding-torch
+einops
+einops_exts
+gradio==3.50.2
+clip-retrieval
