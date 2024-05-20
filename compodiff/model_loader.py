@@ -6,6 +6,7 @@ from transformers import PreTrainedModel, PretrainedConfig, CLIPTokenizer, CLIPI
 from PIL import Image
 import json
 import os
+import numpy as np
 
 # CompoDiff classes (as provided)
 class CompoDiffConfig(PretrainedConfig):
@@ -33,33 +34,116 @@ class CompoDiffModel(PreTrainedModel):
         return self.model.sample(image_cond, text_cond, negative_text_cond, input_mask, num_samples_per_batch, cond_scale, timesteps, random_seed)
 
 # Data Loading and Preprocessing
+# class CompoDiffDataset(Dataset):
+    # def __init__(self, metadata_path, prompt_path, image_dir):
+    #     self.image_dir = image_dir
+    #     with open(metadata_path, 'r') as f:
+    #         self.metadata = [json.loads(line) for line in f]
+    #     with open(prompt_path, 'r') as f:
+    #         self.prompts = {json.loads(line) for line in f}
+        
+    # def __len__(self):
+    #     return len(self.metadata)
+    
+    # def __getitem__(self, idx):
+    #     data = self.metadata[idx]
+    #     prompt = self.prompts[idx]
+        
+    #     seed = data['seed']
+    #     input_image_filename = f"{seed}_1.jpg"
+    #     reference_image_filename = f"{seed}_0.jpg"
+        
+    #     input_image_path = os.path.join(self.image_dir, input_image_filename)
+    #     reference_image_path = os.path.join(self.image_dir, reference_image_filename)
+        
+    #     input_image = Image.open(input_image_path).convert('RGB')
+    #     reference_image = Image.open(reference_image_path).convert('RGB')
+        
+    #     text_condition = prompt['output']  # Use the 'edit' field for the text condition
+    #     mask_condition = None  # Modify as necessary if mask condition is available
+        
+    #     return input_image, reference_image, text_condition, mask_condition
+
+# Data Loading and Preprocessing
+# class CompoDiffDataset(Dataset):
+#     def __init__(self, seeds_path, base_dir):
+#         self.base_dir = base_dir
+#         with open(seeds_path, 'r') as f:
+#             self.seeds = json.load(f)
+        
+#         self.data = []
+#         for folder, files in self.seeds.items():
+#             prompt_path = os.path.join(base_dir, folder, 'prompt.json')
+            
+#             with open(prompt_path, 'r') as f:
+#                 prompt_data = json.load(f)
+#                 for file_pair in files:
+#                     self.data.append({
+#                         'folder': folder,
+#                         'input_image': file_pair + "_1.jpg",
+#                         'reference_image': file_pair + "_0.jpg",
+#                         'text_condition': prompt_data['output']
+#                     })
+        
+#     def __len__(self):
+#         return len(self.data)
+    
+#     def __getitem__(self, idx):
+#         item = self.data[idx]
+        
+#         input_image_path = os.path.join(self.base_dir, item['folder'], item['input_image'])
+#         reference_image_path = os.path.join(self.base_dir, item['folder'], item['reference_image'])
+        
+#         input_image = Image.open(input_image_path).convert('RGB')
+#         reference_image = Image.open(reference_image_path).convert('RGB')
+        
+#         text_condition = item['text_condition']
+#         mask_condition = None
+        
+#         return input_image, reference_image, text_condition, mask_condition
+
+# Data Loading and Preprocessing
 class CompoDiffDataset(Dataset):
-    def __init__(self, metadata_path, prompt_path, image_dir):
-        self.image_dir = image_dir
-        with open(metadata_path, 'r') as f:
-            self.metadata = [json.loads(line) for line in f]
-        with open(prompt_path, 'r') as f:
-            self.prompts = {json.loads(line) for line in f}
+    def __init__(self, seeds_path, base_dir):
+        self.base_dir = base_dir
+        with open(seeds_path, 'r') as f:
+            self.seeds = json.load(f)
+        
+        self.data = []
+        for entry in self.seeds:
+            folder = entry[0]
+            files = entry[1]
+            # Construct the path to the prompt.json file within the current folder
+            prompt_path = os.path.join(base_dir, folder, 'prompt.json')
+            
+            with open(prompt_path, 'r') as f:
+                prompt_data = json.load(f)
+                # For each file pair (seed) in the current folder, add the relevant data to the dataset
+                for file_pair in files:
+                    self.data.append({
+                        'folder': folder,  # The current folder name
+                        'input_image': file_pair + "_1.jpg",  # The input image file name
+                        'reference_image': file_pair + "_0.jpg",  # The reference image file name
+                        'text_condition': prompt_data['output']  # The text condition from prompt.json
+                    })
         
     def __len__(self):
-        return len(self.metadata)
+        return len(self.data)
     
     def __getitem__(self, idx):
-        data = self.metadata[idx]
-        prompt = self.prompts[idx]
+        item = self.data[idx]
         
-        seed = data['seed']
-        input_image_filename = f"{seed}_1.jpg"
-        reference_image_filename = f"{seed}_0.jpg"
+        # Construct the full paths to the input and reference images
+        input_image_path = os.path.join(self.base_dir, item['folder'], item['input_image'])
+        reference_image_path = os.path.join(self.base_dir, item['folder'], item['reference_image'])
         
-        input_image_path = os.path.join(self.image_dir, input_image_filename)
-        reference_image_path = os.path.join(self.image_dir, reference_image_filename)
-        
+        # Load the images
         input_image = Image.open(input_image_path).convert('RGB')
         reference_image = Image.open(reference_image_path).convert('RGB')
         
-        text_condition = prompt['output']  # Use the 'edit' field for the text condition
-        mask_condition = None  # Modify as necessary if mask condition is available
+        # Retrieve the text condition
+        text_condition = item['text_condition']
+        mask_condition = None  # No mask condition in this implementation
         
         return input_image, reference_image, text_condition, mask_condition
 
@@ -153,7 +237,8 @@ if __name__ == '__main__':
     # compodiff.save_pretrained('/data/CompoDiff_HF')
     
     # Dataset and DataLoader
-    dataset = CompoDiffDataset(metadata_path='D:/instruct-pix2pix/data/dataset/metadata.jsonl', prompt_path='D:/instruct-pix2pix/data/dataset/prompt.json', image_dir='D:/instruct-pix2pix/data/dataset')
+    # dataset = CompoDiffDataset(metadata_path='D:/instruct-pix2pix/data/dataset/metadata.jsonl', prompt_path='D:/instruct-pix2pix/data/dataset/prompt.json', image_dir='D:/instruct-pix2pix/data/dataset')
+    dataset = CompoDiffDataset(seeds_path='D:\instruct-pix2pix\data\dataset\seeds.json', base_dir='D:\instruct-pix2pix\data\dataset')
     data_loader = DataLoader(dataset, batch_size=16, shuffle=True)
 
     
